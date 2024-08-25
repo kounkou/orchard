@@ -76,6 +76,7 @@ func GetFruitOrVegetableNotInAccount(db *sql.DB, accountName string) (*FruitVege
 		FROM fruit_vegetables fv
 		JOIN account_fruit_vegetables afv ON fv.fruit_vegetable_name = afv.fruit_vegetable_name
 		WHERE afv.account_name = ?
+		ORDER BY RANDOM()
 		LIMIT 1;
 	`
 
@@ -214,4 +215,63 @@ func GetTopDiscoveryPercentage(db *sql.DB, accountID string, category string) ([
 	})
 
 	return stats[:3], nil
+}
+
+func CreateAccount(db *sql.DB, username string, email string, hash string) error {
+	query := "INSERT INTO accounts (username, email, password_hash) VALUES (?, ?, ?)"
+	_, err := db.Exec(query, username, email, hash)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func DeleteAccount(db *sql.DB, accountID string) error {
+	query := "DELETE FROM accounts WHERE username = ?"
+	result, err := db.Exec(query, accountID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil || rowsAffected == 0 {
+		return err
+	}
+
+	return nil
+}
+
+func AddUnknownItems(db *sql.DB, accountID string, itemNames []string) error {
+	stmt, err := db.Prepare("INSERT INTO account_fruit_vegetables (account_name, fruit_vegetable_name) VALUES (?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for i := range itemNames {
+		_, err := stmt.Exec(accountID, itemNames[i])
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func DeleteUnknownItems(db *sql.DB, accountID string, itemNames []string) error {
+	stmt, err := db.Prepare("DELETE FROM account_fruit_vegetables WHERE account_name = ? AND fruit_vegetable_name = ?")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for i := range itemNames {
+		_, err := stmt.Exec(accountID, itemNames[i])
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
