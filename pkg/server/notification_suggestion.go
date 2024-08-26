@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"orchard/pkg/notifier"
+	"orchard/pkg/persistence"
 	"os"
 	"strings"
 )
@@ -17,6 +18,22 @@ Another way to have smarter notifications is to trigger when specific conditions
   - Another use case is if the user changes country for instance during vacation, it could make sense to suggestion fruits based on the location
 */
 func HandleSuggestionNotificationRequest(db *sql.DB, w http.ResponseWriter, r *http.Request) {
+    cookie, err := r.Cookie("session-token")
+    if err != nil {
+        if err == http.ErrNoCookie {
+            http.Error(w, "Unauthorized: Missing session token", http.StatusUnauthorized)
+            return
+        }
+        http.Error(w, "Error retrieving session token", http.StatusBadRequest)
+        return
+    }
+
+    sessionToken := cookie.Value
+    if !persistence.IsValidSessionToken(sessionToken, db) {
+        http.Error(w, "Unauthorized: Invalid session token", http.StatusUnauthorized)
+        return
+    }
+
 	hash := strings.TrimPrefix(r.URL.Path, "/notification-suggestion-")
 	if hash == "" {
 		http.Error(w, "Missing or invalid hash", http.StatusBadRequest)
