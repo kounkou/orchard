@@ -4,19 +4,33 @@ import (
 	"database/sql"
 	"net/http"
 	"orchard/pkg/persistence"
+	"sync"
 	"time"
 
 	"github.com/gorilla/sessions"
 )
+
+type LoginRequest struct {
+	Username string
+	Hash     string
+}
 
 type User struct {
 	Username     string
 	PasswordHash string
 }
 
-type LoginRequest struct {
-	Username string `json:"username"`
-	Hash 	 string `json:"hash"`
+// In-memory session store
+var sessionStore = struct {
+	sync.RWMutex
+	sessions map[string]SessionData
+}{
+	sessions: make(map[string]SessionData),
+}
+
+type SessionData struct {
+	Username string
+	Expiry   time.Time
 }
 
 func HandleAccountConnection(db *sql.DB, w http.ResponseWriter, r *http.Request, store *sessions.CookieStore) {
@@ -43,11 +57,16 @@ func HandleAccountConnection(db *sql.DB, w http.ResponseWriter, r *http.Request,
 	req.Username = username
 	req.Hash = hash
 
-	// If session already contains data, abort request
-	if persistence.SessionExistsForUser(req.Username, db) {
+	// Check if session already exists in memory
+	sessionStore.RLock()
+	_, sessionExists := sessionStore.sessions[req.Username]
+	sessionStore.RUnlock()
+	if sessionExists {
+		http.Error(w, "Session already exists", http.StatusBadRequest)
 		return
 	}
 
+	// Fetch user details from the database
 	user, err := persistence.GetAccount(db, req.Username)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -63,12 +82,14 @@ func HandleAccountConnection(db *sql.DB, w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	// Create session
 	session, err := store.Get(r, "session-token")
 	if err != nil {
 		http.Error(w, "Failed to create session", http.StatusInternalServerError)
 		return
 	}
-	
+
+	sessionToken := session.ID
 	session.Values["username"] = user.Username
 	session.Values["authenticated"] = true
 	err = session.Save(r, w)
@@ -76,35 +97,21 @@ func HandleAccountConnection(db *sql.DB, w http.ResponseWriter, r *http.Request,
 		http.Error(w, "Failed to save session", http.StatusInternalServerError)
 		return
 	}
-	
-	sessionTokenCookie, err := r.Cookie("session-token")
-    if err != nil {
-        http.Error(w, "Failed to retrieve session cookie", http.StatusInternalServerError)
-        return
-    }
-    sessionToken := sessionTokenCookie.Value
 
-	// Store session token in the database
-	if sessionToken == "" {
-		http.Error(w, "Failed to generate session ID", http.StatusInternalServerError)
-		return
-	}
+	// Store session in memory
 	expiry := time.Now().Add(1 * time.Hour)
-
-	insertQuery := `
-		INSERT INTO sessions (username, session_token, expiry) 
-		VALUES (?, ?, ?)
-	`
-	_, err = db.Exec(insertQuery, user.Username, sessionToken, expiry)
-	if err != nil {
-		http.Error(w, "Failed to save session token", http.StatusInternalServerError)
-		return
+	sessionStore.Lock()
+	sessionStore.sessions[sessionToken] = SessionData{
+		Username: user.Username,
+		Expiry:   expiry,
 	}
+	sessionStore.Unlock()
 
+	// Set the session token as a cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:    "session-token",
 		Value:   sessionToken,
-		Expires: time.Now().Add(1 * time.Hour),
+		Expires: expiry,
 		Path:    "/",
 	})
 

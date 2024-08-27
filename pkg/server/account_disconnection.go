@@ -3,11 +3,10 @@ package server
 import (
 	"database/sql"
 	"net/http"
-
-	"github.com/gorilla/sessions"
+	"time"
 )
 
-func HandleAccountDisconnection(db *sql.DB, w http.ResponseWriter, r *http.Request, store *sessions.CookieStore) {
+func HandleAccountDisconnection(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
 		return
@@ -20,52 +19,20 @@ func HandleAccountDisconnection(db *sql.DB, w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var req LoginRequest
+	sessionToken := cookie.Value
 
-	err = r.ParseForm()
-	if err != nil {
-		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+	// Check if session exists in memory
+	sessionStore.Lock()
+	sessionData, sessionExists := sessionStore.sessions[sessionToken]
+	if !sessionExists || sessionData.Expiry.Before(time.Now()) {
+		sessionStore.Unlock()
+		http.Error(w, "Invalid or expired session", http.StatusUnauthorized)
 		return
 	}
 
-	username := r.FormValue("username")
-
-	if username == "" {
-		http.Error(w, "Missing required fields", http.StatusBadRequest)
-		return
-	}
-
-	req.Username = username
-
-	var sessionToken string
-
-	query := `SELECT session_token FROM sessions WHERE username = ?`
-	err = db.QueryRow(query, req.Username).Scan(&sessionToken)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			http.Error(w, "Invalid username", http.StatusUnauthorized)
-		} else {
-			http.Error(w, "Failed to fetch user details", http.StatusInternalServerError)
-		}
-		return
-	}
-
-	if err != nil || sessionToken != cookie.Value {
-		http.Error(w, "Invalid session", http.StatusUnauthorized)
-		return
-	}
-
-	session, err := store.New(r, "session-token")
-	// Invalidate the session
-	session.Values["authenticated"] = false
-	session.Save(r, w)
-
-	query = `DELETE FROM sessions WHERE session_token = ?`
-	_, err = db.Exec(query, sessionToken)
-	if err != nil {
-		http.Error(w, "Failed to delete session ", http.StatusInternalServerError)
-		return
-	}
+	// Remove session from in-memory store
+	delete(sessionStore.sessions, sessionToken)
+	sessionStore.Unlock()
 
 	// Clear the session cookie
 	http.SetCookie(w, &http.Cookie{

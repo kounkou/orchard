@@ -15,7 +15,7 @@ type Notification struct {
 
 func Start(db *sql.DB) {
 	var store = sessions.NewCookieStore([]byte("secret-key"))
-	
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -36,7 +36,7 @@ func Start(db *sql.DB) {
 		case strings.HasPrefix(r.URL.Path, "/connect"):
 			HandleAccountConnection(db, w, r, store)
 		case strings.HasPrefix(r.URL.Path, "/disconnect"):
-			HandleAccountDisconnection(db, w, r, store)
+			HandleAccountDisconnection(db, w, r)
 
 		// Account data managment
 		case strings.HasPrefix(r.URL.Path, "/add-unknown-items-"):

@@ -5,34 +5,33 @@ import (
 	"encoding/json"
 	"net/http"
 	"orchard/pkg/notifier"
-	"orchard/pkg/persistence"
 	"os"
 	"strings"
+	"time"
 )
 
-/*
-TODO:
-Basically, notifications could be triggered everyday, at specific time (let the user decide when...)
-Another way to have smarter notifications is to trigger when specific conditions are met :
-  - Example use case is if the user is at proximity to a grossery store (requires access to locations)
-  - Another use case is if the user changes country for instance during vacation, it could make sense to suggestion fruits based on the location
-*/
 func HandleSuggestionNotificationRequest(db *sql.DB, w http.ResponseWriter, r *http.Request) {
-    cookie, err := r.Cookie("session-token")
-    if err != nil {
-        if err == http.ErrNoCookie {
-            http.Error(w, "Unauthorized: Missing session token", http.StatusUnauthorized)
-            return
-        }
-        http.Error(w, "Error retrieving session token", http.StatusBadRequest)
-        return
-    }
+	cookie, err := r.Cookie("session-token")
+	if err != nil {
+		if err == http.ErrNoCookie {
+			http.Error(w, "Unauthorized: Missing session token", http.StatusUnauthorized)
+			return
+		}
+		http.Error(w, "Error retrieving session token", http.StatusBadRequest)
+		return
+	}
 
-    sessionToken := cookie.Value
-    if !persistence.IsValidSessionToken(sessionToken, db) {
-        http.Error(w, "Unauthorized: Invalid session token", http.StatusUnauthorized)
-        return
-    }
+	sessionToken := cookie.Value
+
+	// Validate session token in memory
+	sessionStore.RLock()
+	sessionData, sessionExists := sessionStore.sessions[sessionToken]
+	sessionStore.RUnlock()
+
+	if !sessionExists || sessionData.Expiry.Before(time.Now()) {
+		http.Error(w, "Unauthorized: Invalid or expired session token", http.StatusUnauthorized)
+		return
+	}
 
 	hash := strings.TrimPrefix(r.URL.Path, "/notification-suggestion-")
 	if hash == "" {
@@ -40,6 +39,7 @@ func HandleSuggestionNotificationRequest(db *sql.DB, w http.ResponseWriter, r *h
 		return
 	}
 
+	// Create default notifications based on hash
 	notifier.CreateDefaultNotifications(db, hash)
 
 	file, err := os.Open(hash + "-notification.json")
