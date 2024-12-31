@@ -1,0 +1,3 @@
+CREATE TABLE IF NOT EXISTS regions (
+    region_name TEXT PRIMARY KEY NOT NULL
+);
