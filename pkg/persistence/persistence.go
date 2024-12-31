@@ -18,6 +18,7 @@ type Account struct {
 type FruitVegetable struct {
 	Name     string
 	Category string
+	ImageURL string
 }
 
 type RegionStatistic struct {
@@ -45,6 +46,38 @@ func GetFruitOrVegetableNotInAccount(db *sql.DB, accountName string) (*FruitVege
 	}
 
 	return &fv, nil
+}
+
+func GetFruitsOrVegetableNotInAccount(db *sql.DB, accountName string) ([]FruitVegetable, error) {	
+	query := `
+		SELECT fv.fruit_vegetable_name, fv.category, fv.image_url
+		FROM fruit_vegetables fv
+		LEFT JOIN account_fruit_vegetables afv ON fv.fruit_vegetable_name = afv.fruit_vegetable_name
+		WHERE afv.account_name IS NULL OR afv.account_name != ?
+		ORDER BY RANDOM();
+	`
+
+	rows, err := db.Query(query, accountName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var fvList []FruitVegetable
+
+	for rows.Next() {
+		var fv FruitVegetable
+		if err := rows.Scan(&fv.Name, &fv.Category, &fv.ImageURL); err != nil {
+			return nil, err
+		}
+		fvList = append(fvList, fv)
+	}
+
+	if err = rows.Err(); err != nil {
+		return fvList, err
+	}
+
+	return fvList, nil
 }
 
 func GetDescription(db *sql.DB, id string) (string, error) {

@@ -15,6 +15,17 @@ import (
 
 type Notification struct {
 	Notification string `json:"notification"`
+	ImageURL 	 string `json:"imageURL"`
+}
+
+type FruitVegetable struct {
+	Name     string
+	Category string
+	ImageURL string
+}
+
+type Suggestions struct {
+	Items []persistence.FruitVegetable `json:"items"`
 }
 
 func generateRandomNotification(name, description string) Notification {
@@ -40,6 +51,7 @@ func generateRandomNotification(name, description string) Notification {
 
 	return Notification{
 		Notification: formattedNotification,
+		ImageURL: "", // TODO fill this image 
 	}
 }
 
@@ -176,4 +188,16 @@ func CreateStats(db *sql.DB, accountHash string) {
 	} else {
 		log.Printf("Account: %s, You have discoverd all possible fruits and vegetables!\n", account.Username)
 	}
+}
+
+func CreateItemsSuggestionNotification(items []persistence.FruitVegetable) (Suggestions, error) {
+	if len(items) == 0 {
+		return Suggestions{}, fmt.Errorf("no items provided to create suggestions")
+	}
+
+	suggestions := Suggestions{
+		Items: items,
+	}
+
+	return suggestions, nil
 }
