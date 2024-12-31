@@ -1,5 +1,10 @@
 # Orchard Odyssey
 
+To learn more about Orchard, have a look at the substack : 
+https://orchardodyssey.substack.com
+
+
+
 ```sql
 INSERT INTO accounts (username, email, password_hash) VALUES ('jacques', 'gkounkou@gmail.com', 'b47fddd607ca735ad44ef235637efa15ed76f94d3760d0ee33b7c50f70957886')
 
